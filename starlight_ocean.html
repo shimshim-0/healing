@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>별빛 바다 물멍 (Starlight Ocean)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .font-serif-kr {
+            font-family: 'Noto Serif KR', serif;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #040814;
+            color: #f8fafc;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        /* 시네마틱 글래스모피즘 패널 */
+        .cinematic-glass {
+            background: rgba(10, 16, 30, 0.42);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .modal-glass {
+            background: rgba(9, 14, 26, 0.86);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+        }
+        /* 물멍(Zen) 모드 페이드 효과 */
+        .zen-transition {
+            transition: opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1), transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .zen-hidden {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(10px);
+        }
+        /* 아날로그 시계 다이얼 인터랙션 영역 */
+        #clockDial {
+            touch-action: none;
+            cursor: grab;
+        }
+        #clockDial:active {
+            cursor: grabbing;
+        }
+        /* 떠다니는 유리병 & 등불 호버 효과 */
+        .vessel-node {
+            transition: filter 0.3s ease;
+        }
+        .vessel-node:hover {
+            filter: brightness(1.18) drop-shadow(0 0 14px rgba(255, 255, 255, 0.45));
+            z-index: 25;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.25);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 999px;
+        }
+    </style>
+</head>
+<body class="relative select-none">
+
+    <!-- 메인 사실적 바다 & 하늘 렌더링 캔버스 -->
+    <canvas id="oceanCanvas" class="fixed inset-0 z-0"></canvas>
+
+    <!-- 바다 수면 위 실시간 유리병/등불 오버레이 레이어 -->
+    <div id="vesselsContainer" class="fixed inset-0 z-10 pointer-events-none overflow-hidden"></div>
+
+    <!-- 물멍 모드 해제 버튼 -->
+    <button id="exitZenBtn" class="fixed top-5 right-5 z-40 hidden cinematic-glass px-4 py-2 rounded-full text-xs sm:text-sm text-white/90 hover:text-white hover:bg-white/10 transition flex items-center gap-2 cursor-pointer">
+        <span>👁️</span><span>UI 다시 보기</span>
+    </button>
+
+    <!-- 상단 HUD: 좌측 타이틀 & 사운드/물멍 컨트롤 | 우측 아날로그 시계 다이얼 -->
+    <header id="topHud" class="zen-transition fixed top-4 left-4 right-4 sm:top-6 sm:left-6 sm:right-6 z-20 flex items-start justify-between gap-3 pointer-events-none">
+        
+        <!-- 좌측: 브랜드 타이틀 및 감성 컨트롤 -->
+        <div class="flex flex-col gap-2.5 pointer-events-auto">
+            <div class="cinematic-glass px-4 py-3 rounded-2xl flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-lg shadow-inner">
+                    🌊
+                </div>
+                <div>
+                    <h1 class="font-serif-kr text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
+                        별빛 바다 물멍
+                    </h1>
+                    <div class="flex items-center gap-1.5 text-[11px] text-slate-300 mt-0.5">
+                        <span id="connDot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="connLabel">실시간 바다 연결됨</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 파도 ASMR & 물멍 모드 버튼 -->
+            <div class="flex items-center gap-2">
+                <button id="soundToggleBtn" class="cinematic-glass px-3.5 py-2 rounded-xl text-xs text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 cursor-pointer">
+                    <span id="soundIcon">🔇</span>
+                    <span id="soundText">파도 소리</span>
+                </button>
+                <button id="enterZenBtn" class="cinematic-glass px-3.5 py-2 rounded-xl text-xs text-slate-200 hover:text-white hover:bg-white/10 transition flex items-center gap-1.5 cursor-pointer" title="화면의 모든 UI를 숨기고 바다만 감상합니다">
+                    <span>✨</span>
+                    <span>물멍 모드</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 우측: 드래그 가능한 24시간 아날로그 시계 다이얼 -->
+        <div class="cinematic-glass p-3 sm:p-3.5 rounded-3xl flex flex-col items-center pointer-events-auto">
+            <!-- SVG 아날로그 시계 (시계바늘 직접 드래그 가능) -->
+            <div class="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
+                <svg id="clockDial" viewBox="0 0 140 140" class="w-full h-full overflow-visible">
+                    <!-- 외곽 유리 링 -->
+                    <circle cx="70" cy="70" r="64" fill="rgba(6, 11, 24, 0.45)" stroke="rgba(255, 255, 255, 0.22)" stroke-width="1.5"/>
+                    <circle cx="70" cy="70" r="56" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" stroke-dasharray="2 3"/>
+                    
+                    <!-- 눈금 및 24시간 방위 표시 (JS로 정교하게 생성) -->
+                    <g id="clockTicks"></g>
+
+                    <!-- 시간대 아이콘 표시 (상단 00시 달, 하단 12시 태양, 좌우 새벽/노을) -->
+                    <text x="70" y="21" text-anchor="middle" fill="rgba(254, 249, 195, 0.85)" font-size="8" font-weight="600">00</text>
+                    <text x="119" y="73" text-anchor="middle" fill="rgba(253, 186, 116, 0.85)" font-size="8" font-weight="600">06</text>
+                    <text x="70" y="125" text-anchor="middle" fill="rgba(253, 224, 71, 0.9)" font-size="8" font-weight="600">12</text>
+                    <text x="21" y="73" text-anchor="middle" fill="rgba(251, 146, 60, 0.85)" font-size="8" font-weight="600">18</text>
+
+                    <!-- 분침 (Minute Hand) -->
+                    <line id="minuteHand" x1="70" y1="70" x2="70" y2="24" stroke="rgba(226, 232, 240, 0.65)" stroke-width="1.8" stroke-linecap="round"/>
+
+                    <!-- 시침 (Hour Hand - 24시간 기준 회전) -->
+                    <g id="hourHandGroup">
+                        <line x1="70" y1="76" x2="70" y2="26" stroke="#fde047" stroke-width="3" stroke-linecap="round"/>
+                        <!-- 드래그 손잡이 노브 -->
+                        <circle cx="70" cy="24" r="6.5" fill="#fde047" stroke="#0f172a" stroke-width="1.5"/>
+                        <circle cx="70" cy="24" r="11" fill="rgba(253, 224, 71, 0.22)"/>
+                    </g>
+
+                    <!-- 시계 중심 핀 -->
+                    <circle cx="70" cy="70" r="4" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+                </svg>
+            </div>
+
+            <!-- 디지털 시각 & 시간대 분위기 라벨 + LIVE 동기화 버튼 -->
+            <div class="mt-1.5 flex items-center justify-between w-full gap-2 px-1">
+                <div class="text-left">
+                    <div id="digitalTimeText" class="text-xs sm:text-sm font-bold text-white tracking-wider tabular-nums leading-none">
+                        19:22
+                    </div>
+                    <div id="timePhaseLabel" class="text-[10px] text-amber-200/90 mt-0.5 font-medium">
+                        노을빛 저녁
+                    </div>
+                </div>
+                <button id="liveSyncBtn" class="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[10px] font-bold text-emerald-300 border border-emerald-400/30 transition cursor-pointer" title="현재 실제 시간으로 맞추기">
+                    LIVE
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 중앙 은은한 첫 진입 가이드 (바다가 비어 있을 때만 표시, 메시지 작성 시 자동 숨김) -->
+    <div id="emptyOceanHint" class="zen-transition fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none text-center px-6">
+        <p class="font-serif-kr text-sm sm:text-base text-white/75 tracking-wider drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
+            고요한 바다가 펼쳐져 있습니다.
+        </p>
+        <p class="text-xs text-white/55 mt-1.5">
+            우측 시계바늘을 돌려 시간대를 바꾸거나, 아래에서 첫 유리병 편지를 띄워보세요.
+        </p>
+    </div>
+
+    <!-- 하단 글래스모피즘 메시지 작성 바 -->
+    <footer id="bottomHud" class="zen-transition fixed bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 z-20 flex flex-col items-center pointer-events-none">
+        <form id="composeForm" class="cinematic-glass w-full max-w-2xl p-2 sm:p-2.5 rounded-3xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pointer-events-auto">
+            <div class="flex items-center gap-1.5">
+                <button type="button" id="vesselTypeBtn" class="px-3 py-2 rounded-2xl bg-white/10 hover:bg-white/15 text-xs font-medium text-amber-200 flex items-center gap-1.5 transition cursor-pointer shrink-0">
+                    <span id="vesselTypeEmoji">🍾</span>
+                    <span id="vesselTypeName">유리병</span>
+                </button>
+                <input id="authorInput" type="text" maxlength="10" placeholder="내 이름"
+                    class="w-24 sm:w-28 px-3 py-2 rounded-2xl bg-slate-950/55 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-300/60 select-text">
+            </div>
+            <div class="flex-1 flex items-center gap-2">
+                <input id="contentInput" type="text" maxlength="140" placeholder="친구와 나눌 한마디를 바다에 띄워보세요..."
+                    class="flex-1 px-3.5 py-2 rounded-2xl bg-slate-950/55 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-300/60 select-text">
+                <button type="submit" class="px-4 py-2 rounded-2xl bg-gradient-to-r from-sky-300 to-indigo-300 hover:brightness-110 text-slate-950 font-bold text-xs sm:text-sm transition cursor-pointer shrink-0 shadow-lg">
+                    띄우기
+                </button>
+            </div>
+        </form>
+    </footer>
+
+    <!-- 유리병 편지 / 소원 등불 상세 및 실시간 댓글(답글) 모달 -->
+    <div id="detailModal" class="fixed inset-0 z-30 hidden items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm">
+        <div class="modal-glass w-full max-w-md rounded-3xl p-5 sm:p-6 flex flex-col max-h-[82vh] relative">
+            <div class="flex items-center justify-between pb-3.5 border-b border-white/10">
+                <div class="flex items-center gap-2.5">
+                    <span id="modalEmoji" class="text-2xl">🍾</span>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span id="modalAuthor" class="font-bold text-sm sm:text-base text-sky-200">작성자</span>
+                            <span id="modalTime" class="text-[11px] text-slate-400">방금 전</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button id="deleteVesselBtn" class="hidden px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs transition cursor-pointer">
+                        거두기
+                    </button>
+                    <button id="closeModalBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 flex items-center justify-center text-sm transition cursor-pointer">
+                        ✕
+                    </button>
+                </div>
+            </div>
+
+            <!-- 본문 영역 -->
+            <div class="py-5 px-1">
+                <p id="modalBody" class="font-serif-kr text-base sm:text-lg text-white leading-relaxed whitespace-pre-wrap break-words select-text"></p>
+                <div class="mt-5 flex items-center justify-between">
+                    <button id="heartBtn" class="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-rose-500/25 border border-white/15 text-xs sm:text-sm text-rose-200 flex items-center gap-1.5 transition cursor-pointer">
+                        <span>🤍</span>
+                        <span>마음 공감</span>
+                        <span id="modalLikes" class="font-bold text-white">0</span>
+                    </button>
+                    <span class="text-[11px] text-slate-400">실시간 답글로 마음을 이어보세요</span>
+                </div>
+            </div>
+
+            <!-- 답글 리스트 -->
+            <div id="repliesContainer" class="flex-1 overflow-y-auto border-t border-white/10 pt-3 space-y-2.5 pr-1 min-h-[110px]"></div>
+
+            <!-- 답글 작성 폼 -->
+            <form id="replyForm" class="mt-3 pt-3 border-t border-white/10 flex items-center gap-2">
+                <input id="replyInput" type="text" maxlength="120" placeholder="따뜻한 답글 남기기..."
+                    class="flex-1 px-3.5 py-2 rounded-2xl bg-slate-950/65 border border-white/15 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-300/60 select-text">
+                <button type="submit" class="px-4 py-2 rounded-2xl bg-sky-300 hover:bg-sky-200 text-slate-950 font-bold text-xs sm:text-sm transition cursor-pointer shrink-0">
+                    답글
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 알림 토스트 -->
+    <div id="toastEl" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2">
+        <div id="toastText" class="cinematic-glass px-4 py-2 rounded-full text-xs sm:text-sm text-white font-medium shadow-xl"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, arrayUnion, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================
+        // 1. Web Audio API 사실적 파도 ASMR & 물방울/풍경 사운드
+        // =========================================================
+        class AmbientOceanAudio {
+            constructor() {
+                this.ctx = null;
+                this.playing = false;
+                this.masterGain = null;
+            }
+            init() {
+                if (this.ctx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioCtx();
+
+                // 브라운 노이즈 + 핑크 노이즈 블렌딩으로 깊고 부드러운 파도 포말음 생성
+                const bufferSize = this.ctx.sampleRate * 5;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                let lastOut = 0;
+                for (let i = 0; i < bufferSize; i++) {
+                    const white = Math.random() * 2 - 1;
+                    outputVal: {
+                        lastOut = (lastOut + 0.025 * white) / 1.025;
+                        data[i] = lastOut * 3.0;
+                    }
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 340;
+
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.value = 0;
+
+                // 약 9초 주기로 밀려왔다 빠져나가는 파도 볼륨 모듈레이션
+                const lfo = this.ctx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 0.11;
+                const lfoGain = this.ctx.createGain();
+                lfoGain.gain.value = 0.085;
+
+                lfo.connect(lfoGain);
+                lfoGain.connect(this.masterGain.gain);
+
+                noise.connect(filter);
+                filter.connect(this.masterGain);
+                this.masterGain.connect(this.ctx.destination);
+
+                noise.start(0);
+                lfo.start(0);
+            }
+            toggle() {
+                this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+                this.playing = !this.playing;
+                const now = this.ctx.currentTime;
+                this.masterGain.gain.setTargetAtTime(this.playing ? 0.14 : 0, now, 0.7);
+                return this.playing;
+            }
+            playHarmonic(ratio = 0.5) {
+                if (!this.playing || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50];
+                    const freq = notes[Math.floor(ratio * notes.length) % notes.length];
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.001, now);
+                    gain.gain.linearRampToValueAtTime(0.055, now + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.9);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 1.95);
+                } catch (e) {}
+            }
+        }
+        const oceanAudio = new AmbientOceanAudio();
+
+        // =========================================================
+        // 2. 아날로그 시계 다이얼 (00:00 ~ 24:00 연속 시간 제어)
+        // =========================================================
+        const nowInit = new Date();
+        let currentHours = nowInit.getHours() + nowInit.getMinutes() / 60; // 0.0 ~ 24.0
+        let isLiveMode = true;
+        let isDraggingClock = false;
+
+        const clockDial = document.getElementById('clockDial');
+        const hourHandGroup = document.getElementById('hourHandGroup');
+        const minuteHand = document.getElementById('minuteHand');
+        const digitalTimeText = document.getElementById('digitalTimeText');
+        const timePhaseLabel = document.getElementById('timePhaseLabel');
+        const liveSyncBtn = document.getElementById('liveSyncBtn');
+
+        // 시계 눈금 24개 생성
+        const clockTicks = document.getElementById('clockTicks');
+        for (let i = 0; i < 24; i++) {
+            const angle = (i / 24) * 360;
+            const isMajor = i % 6 === 0;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '70');
+            line.setAttribute('y1', isMajor ? '8' : '10');
+            line.setAttribute('x2', '70');
+            line.setAttribute('y2', isMajor ? '14' : '13');
+            line.setAttribute('stroke', isMajor ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)');
+            line.setAttribute('stroke-width', isMajor ? '1.6' : '1');
+            line.setAttribute('transform', `rotate(${angle} 70 70)`);
+            clockTicks.appendChild(line);
+        }
+
+        function getPhaseDescription(h) {
+            if (h >= 0 && h < 4.5) return '깊은 밤바다';
+            if (h >= 4.5 && h < 6.5) return '새벽 여명';
+            if (h >= 6.5 && h < 11.5) return '맑은 아침 바다';
+            if (h >= 11.5 && h < 16.5) return '햇살 가득한 낮';
+            if (h >= 16.5 && h < 19.5) return '노을빛 저녁';
+            return '별빛 내리는 밤';
+        }
+
+        function updateClockVisuals() {
+            const normalized = ((currentHours % 24) + 24) % 24;
+            const hrs = Math.floor(normalized);
+            const mins = Math.floor((normalized - hrs) * 60);
+
+            const hourAngle = (normalized / 24) * 360; // 00시가 12시 방향(상단)
+            const minAngle = (mins / 60) * 360;
+
+            hourHandGroup.setAttribute('transform', `rotate(${hourAngle} 70 70)`);
+            minuteHand.setAttribute('transform', `rotate(${minAngle} 70 70)`);
+
+            digitalTimeText.textContent = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+            timePhaseLabel.textContent = getPhaseDescription(normalized);
+
+            if (isLiveMode) {
+                liveSyncBtn.classList.add('bg-emerald-400/25', 'text-emerald-200', 'border-emerald-300/60');
+            } else {
+                liveSyncBtn.classList.remove('bg-emerald-400/25', 'text-emerald-200', 'border-emerald-300/60');
+            }
+        }
+
+        function setTimeFromPointer(clientX, clientY) {
+            const rect = clockDial.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dx = clientX - cx;
+            const dy = clientY - cy;
+
+            // 상단(12시 방향)이 0도가 되도록 각도 계산
+            let deg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+            if (deg < 0) deg += 360;
+
+            currentHours = (deg / 360) * 24;
+            isLiveMode = false;
+            updateClockVisuals();
+        }
+
+        clockDial.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            isDraggingClock = true;
+            clockDial.setPointerCapture(e.pointerId);
+            setTimeFromPointer(e.clientX, e.clientY);
+        });
+
+        clockDial.addEventListener('pointermove', (e) => {
+            if (!isDraggingClock) return;
+            setTimeFromPointer(e.clientX, e.clientY);
+        });
+
+        clockDial.addEventListener('pointerup', (e) => {
+            if (isDraggingClock) {
+                isDraggingClock = false;
+                clockDial.releasePointerCapture(e.pointerId);
+            }
+        });
+
+        liveSyncBtn.addEventListener('click', () => {
+            const d = new Date();
+            currentHours = d.getHours() + d.getMinutes() / 60;
+            isLiveMode = true;
+            updateClockVisuals();
+            showToast('현재 실제 시간과 바다 풍경을 동기화했습니다 🕰️');
+        });
+
+        updateClockVisuals();
+
+        // =========================================================
+        // 3. 시간대별 연속 보간(Interpolation) 사실적 바다 & 하늘 엔진
+        // =========================================================
+        const canvas = document.getElementById('oceanCanvas');
+        const ctx = canvas.getContext('2d');
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            dpr = Math.min(window.devicePixelRatio || 1, 2);
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 24시간 색상 키프레임 (부드러운 실시간 블렌딩용)
+        const SKY_KEYFRAMES = [
+            { h: 0,  top: [4, 8, 22],     mid: [10, 20, 48],    bot: [18, 36, 72],    seaTop: [12, 28, 58],   seaBot: [4, 10, 24],   star: 0.95, sunAlpha: 0,   moonAlpha: 1,   glitter: [254, 249, 195] },
+            { h: 4.5,top: [12, 16, 42],   mid: [38, 34, 78],    bot: [95, 68, 112],   seaTop: [24, 34, 68],   seaBot: [8, 14, 32],   star: 0.55, sunAlpha: 0.1, moonAlpha: 0.5, glitter: [245, 208, 254] },
+            { h: 6.2,top: [28, 52, 98],   mid: [148, 92, 118],  bot: [244, 162, 118], seaTop: [48, 78, 115],  seaBot: [16, 32, 58],  star: 0.05, sunAlpha: 0.85,moonAlpha: 0,   glitter: [253, 186, 116] },
+            { h: 9,  top: [26, 98, 178],  mid: [76, 158, 224],  bot: [168, 218, 248], seaTop: [22, 118, 168], seaBot: [10, 56, 96],  star: 0,    sunAlpha: 1,   moonAlpha: 0,   glitter: [255, 255, 240] },
+            { h: 13.5,top:[18, 88, 172],  mid: [64, 152, 222],  bot: [154, 214, 246], seaTop: [18, 126, 176], seaBot: [8, 62, 104],  star: 0,    sunAlpha: 1,   moonAlpha: 0,   glitter: [255, 253, 224] },
+            { h: 16.5,top:[34, 72, 138],  mid: [132, 118, 162], bot: [238, 168, 112], seaTop: [36, 86, 128],  seaBot: [14, 42, 74],  star: 0,    sunAlpha: 0.95,moonAlpha: 0,   glitter: [253, 224, 71]  },
+            { h: 18.3,top:[26, 22, 58],   mid: [138, 46, 78],   bot: [242, 112, 68],  seaTop: [72, 34, 62],   seaBot: [20, 12, 32],  star: 0.25, sunAlpha: 0.75,moonAlpha: 0.2, glitter: [251, 146, 60]  },
+            { h: 20.2,top:[8, 14, 36],    mid: [22, 32, 68],    bot: [42, 54, 96],    seaTop: [18, 34, 68],   seaBot: [6, 14, 32],   star: 0.85, sunAlpha: 0,   moonAlpha: 0.9, glitter: [254, 249, 195] },
+            { h: 24, top: [4, 8, 22],     mid: [10, 20, 48],    bot: [18, 36, 72],    seaTop: [12, 28, 58],   seaBot: [4, 10, 24],   star: 0.95, sunAlpha: 0,   moonAlpha: 1,   glitter: [254, 249, 195] }
+        ];
+
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+        function lerpRgb(c1, c2, t) {
+            return [
+                Math.round(lerp(c1[0], c2[0], t)),
+                Math.round(lerp(c1[1], c2[1], t)),
+                Math.round(lerp(c1[2], c2[2], t))
+            ];
+        }
+        function rgbStr(arr, alpha = 1) {
+            return `rgba(${arr[0]}, ${arr[1]}, ${arr[2]}, ${alpha})`;
+        }
+
+        function getInterpolatedAtmosphere(hour) {
+            const h = ((hour % 24) + 24) % 24;
+            for (let i = 0; i < SKY_KEYFRAMES.length - 1; i++) {
+                const k1 = SKY_KEYFRAMES[i];
+                const k2 = SKY_KEYFRAMES[i + 1];
+                if (h >= k1.h && h <= k2.h) {
+                    const t = (h - k1.h) / (k2.h - k1.h);
+                    return {
+                        top: lerpRgb(k1.top, k2.top, t),
+                        mid: lerpRgb(k1.mid, k2.mid, t),
+                        bot: lerpRgb(k1.bot, k2.bot, t),
+                        seaTop: lerpRgb(k1.seaTop, k2.seaTop, t),
+                        seaBot: lerpRgb(k1.seaBot, k2.seaBot, t),
+                        star: lerp(k1.star, k2.star, t),
+                        sunAlpha: lerp(k1.sunAlpha, k2.sunAlpha, t),
+                        moonAlpha: lerp(k1.moonAlpha, k2.moonAlpha, t),
+                        glitter: lerpRgb(k1.glitter, k2.glitter, t)
+                    };
+                }
+            }
+            return SKY_KEYFRAMES[0];
+        }
+
+        // 밤하늘 별, 구름, 갈매기, 윤슬 파티클, 물결 파문 초기화
+        const stars = Array.from({ length: 120 }, () => ({
+            x: Math.random(),
+            y: Math.random() * 0.54,
+            r: Math.random() * 1.6 + 0.4,
+            speed: Math.random() * 2.2 + 0.8,
+            phase: Math.random() * Math.PI * 2
+        }));
+
+        const clouds = Array.from({ length: 6 }, (_, idx) => ({
+            x: (idx / 6) * 1.3 - 0.15,
+            y: 0.12 + Math.random() * 0.25,
+            scale: 0.75 + Math.random() * 0.65,
+            speed: 0.004 + Math.random() * 0.005
+        }));
+
+        const seagulls = Array.from({ length: 4 }, (_, i) => ({
+            x: 0.2 + i * 0.18,
+            y: 0.22 + (i % 2) * 0.06,
+            phase: i * 1.4,
+            speed: 0.015 + Math.random() * 0.01
+        }));
+
+        // 수면 위 반짝이는 윤슬(Specular Glitters) 데이터
+        const glitters = Array.from({ length: 85 }, () => ({
+            offsetX: (Math.random() - 0.5) * 2.2,
+            yRatio: Math.pow(Math.random(), 1.35), // 수평선 근처에 더 조밀하게 분포
+            size: Math.random() * 14 + 4,
+            speed: Math.random() * 3 + 1.5,
+            phase: Math.random() * Math.PI * 2
+        }));
+
+        let ripples = [];
+        let shootingStars = [];
+
+        function triggerShootingStar(x = null, y = null) {
+            shootingStars.push({
+                x: x !== null ? x : Math.random() * width * 0.75,
+                y: y !== null ? y : Math.random() * height * 0.28,
+                vx: 9.5 + Math.random() * 4,
+                vy: 4.2 + Math.random() * 2.5,
+                life: 1.0
+            });
+        }
+
+        function triggerWaterRipple(x, y) {
+            ripples.push({ x, y, r: 4, maxR: 75 + Math.random() * 30, alpha: 0.85 });
+            oceanAudio.playHarmonic(x / width);
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            const horizonY = height * 0.55;
+            if (e.clientY < horizonY) {
+                triggerShootingStar(e.clientX, e.clientY);
+            } else {
+                triggerWaterRipple(e.clientX, e.clientY);
+            }
+        });
+
+        function renderOceanFrame(now) {
+            const t = now / 1000;
+
+            // LIVE 모드일 경우 실제 시스템 시각과 부드럽게 동기화
+            if (isLiveMode) {
+                const d = new Date();
+                currentHours = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+                if (Math.floor(t) % 5 === 0) updateClockVisuals();
+            }
+
+            const atm = getInterpolatedAtmosphere(currentHours);
+            const horizonY = height * 0.55;
+
+            // 1. 하늘 그라데이션 렌더링
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+            skyGrad.addColorStop(0, rgbStr(atm.top));
+            skyGrad.addColorStop(0.58, rgbStr(atm.mid));
+            skyGrad.addColorStop(1, rgbStr(atm.bot));
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, width, horizonY + 2);
+
+            // 2. 별빛 렌더링 (밤/새벽/저녁 시간대)
+            if (atm.star > 0.02) {
+                stars.forEach(s => {
+                    const twinkle = 0.35 + 0.65 * Math.sin(t * s.speed + s.phase);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * atm.star})`;
+                    ctx.beginPath();
+                    ctx.arc(s.x * width, s.y * height, s.r, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // 3. 태양 & 달의 24시간 궤도 계산
+            // 태양: 06:00 일출 -> 12:30 정점 -> 19:00 일몰
+            const sunProgress = (currentHours - 5.5) / 13.5; // 0 ~ 1
+            const sunX = width * (0.18 + Math.max(0, Math.min(1, sunProgress)) * 0.64);
+            const sunArc = Math.sin(Math.max(0, Math.min(1, sunProgress)) * Math.PI);
+            const sunY = horizonY + 25 - sunArc * (horizonY * 0.72);
+
+            // 달: 19:00 월출 -> 00:30 정점 -> 06:00 월몰
+            const moonHour = currentHours >= 18 ? currentHours - 18 : currentHours + 6;
+            const moonProgress = moonHour / 12;
+            const moonX = width * (0.22 + Math.max(0, Math.min(1, moonProgress)) * 0.56);
+            const moonArc = Math.sin(Math.max(0, Math.min(1, moonProgress)) * Math.PI);
+            const moonY = horizonY + 20 - moonArc * (horizonY * 0.68);
+
+            // 태양 렌더링
+            if (atm.sunAlpha > 0.02) {
+                const sunR = Math.min(34, width * 0.048);
+                const sunGlow = ctx.createRadialGradient(sunX, sunY, sunR * 0.3, sunX, sunY, sunR * 5.5);
+                sunGlow.addColorStop(0, `rgba(254, 240, 138, ${0.55 * atm.sunAlpha})`);
+                sunGlow.addColorStop(0.5, `rgba(251, 146, 60, ${0.2 * atm.sunAlpha})`);
+                sunGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = sunGlow;
+                ctx.beginPath();
+                ctx.arc(sunX, sunY, sunR * 5.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = `rgba(255, 251, 235, ${atm.sunAlpha})`;
+                ctx.beginPath();
+                ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 달(크레이터 디테일 포함) 렌더링
+            if (atm.moonAlpha > 0.02) {
+                const moonR = Math.min(28, width * 0.042);
+                const moonGlow = ctx.createRadialGradient(moonX, moonY, moonR * 0.4, moonX, moonY, moonR * 4.5);
+                moonGlow.addColorStop(0, `rgba(254, 249, 195, ${0.38 * atm.moonAlpha})`);
+                moonGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = moonGlow;
+                ctx.beginPath();
+                ctx.arc(moonX, moonY, moonR * 4.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.save();
+                ctx.globalAlpha = atm.moonAlpha;
+                ctx.fillStyle = '#fef9c3';
+                ctx.beginPath();
+                ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 은은한 달 표면 크레이터 음영
+                ctx.fillStyle = 'rgba(202, 138, 4, 0.14)';
+                ctx.beginPath();
+                ctx.arc(moonX - moonR * 0.28, moonY - moonR * 0.15, moonR * 0.26, 0, Math.PI * 2);
+                ctx.arc(moonX + moonR * 0.22, moonY + moonR * 0.25, moonR * 0.18, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 4. 입체적인 구름층 렌더링
+            clouds.forEach(c => {
+                c.x += c.speed * 0.016;
+                if (c.x > 1.25) c.x = -0.25;
+                const cx = c.x * width;
+                const cy = c.y * height;
+                const cloudAlpha = atm.sunAlpha > 0.3 ? 0.16 : 0.045;
+
+                ctx.fillStyle = `rgba(255, 255, 255, ${cloudAlpha})`;
+                ctx.beginPath();
+                ctx.arc(cx, cy, 42 * c.scale, 0, Math.PI * 2);
+                ctx.arc(cx + 34 * c.scale, cy - 8 * c.scale, 36 * c.scale, 0, Math.PI * 2);
+                ctx.arc(cx + 68 * c.scale, cy + 2 * c.scale, 30 * c.scale, 0, Math.PI * 2);
+                ctx.arc(cx - 32 * c.scale, cy + 5 * c.scale, 28 * c.scale, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 5. 낮/노을 시간대 멀리 날아가는 갈매기
+            if (atm.sunAlpha > 0.25) {
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.45 * atm.sunAlpha})`;
+                ctx.lineWidth = 1.4;
+                seagulls.forEach(g => {
+                    g.x += g.speed * 0.016;
+                    if (g.x > 1.1) g.x = -0.1;
+                    const gx = g.x * width;
+                    const gy = g.y * height + Math.sin(t * 2 + g.phase) * 6;
+                    const wingY = Math.sin(t * 6 + g.phase) * 4;
+                    ctx.beginPath();
+                    ctx.moveTo(gx - 7, gy - wingY);
+                    ctx.quadraticCurveTo(gx - 3, gy - 4, gx, gy);
+                    ctx.quadraticCurveTo(gx + 3, gy - 4, gx + 7, gy - wingY);
+                    ctx.stroke();
+                });
+            }
+
+            // 6. 별똥별 렌더링
+            if (atm.star > 0.4 && Math.random() < 0.004) triggerShootingStar();
+            for (let i = shootingStars.length - 1; i >= 0; i--) {
+                const ss = shootingStars[i];
+                ss.x += ss.vx;
+                ss.y += ss.vy;
+                ss.life -= 0.018;
+                if (ss.life <= 0) {
+                    shootingStars.splice(i, 1);
+                    continue;
+                }
+                const grad = ctx.createLinearGradient(ss.x, ss.y, ss.x - ss.vx * 8, ss.y - ss.vy * 8);
+                grad.addColorStop(0, `rgba(255, 255, 255, ${ss.life})`);
+                grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.moveTo(ss.x, ss.y);
+                ctx.lineTo(ss.x - ss.vx * 8, ss.y - ss.vy * 8);
+                ctx.stroke();
+            }
+
+            // 7. 사실적인 원근 다층 바다 수면 렌더링
+            const seaGrad = ctx.createLinearGradient(0, horizonY, 0, height);
+            seaGrad.addColorStop(0, rgbStr(atm.seaTop));
+            seaGrad.addColorStop(1, rgbStr(atm.seaBot));
+            ctx.fillStyle = seaGrad;
+            ctx.fillRect(0, horizonY, width, height - horizonY);
+
+            // 수평선 대기 산란(Haze) 블렌딩
+            const hazeGrad = ctx.createLinearGradient(0, horizonY - 14, 0, horizonY + 18);
+            hazeGrad.addColorStop(0, rgbStr(atm.bot, 0));
+            hazeGrad.addColorStop(0.5, rgbStr(atm.bot, 0.45));
+            hazeGrad.addColorStop(1, rgbStr(atm.seaTop, 0));
+            ctx.fillStyle = hazeGrad;
+            ctx.fillRect(0, horizonY - 14, width, 32);
+
+            // 6개 레이어의 입체 너울 파도 & 미세 포말 하이라이트
+            const waveLayers = 6;
+            for (let l = 0; l < waveLayers; l++) {
+                const ratio = l / (waveLayers - 1); // 0(수평선) -> 1(가까운 앞바다)
+                const baseY = horizonY + Math.pow(ratio, 1.25) * (height - horizonY) * 0.92;
+                const amp = 3 + ratio * 15;
+                const freq = 0.008 - ratio * 0.004;
+                const speed = (l % 2 === 0 ? 1 : -1) * (0.35 + ratio * 0.35);
+
+                const layerColor = lerpRgb(atm.seaTop, atm.seaBot, ratio * 0.85);
+                ctx.fillStyle = rgbStr(layerColor, 0.72 + ratio * 0.25);
+
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                for (let x = 0; x <= width + 20; x += 14) {
+                    const y = baseY
+                        + Math.sin(x * freq + t * speed + l * 1.3) * amp
+                        + Math.cos(x * freq * 1.9 - t * speed * 0.6) * (amp * 0.35);
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(width, height);
+                ctx.closePath();
+                ctx.fill();
+
+                // 파도 마루의 은은한 물거품(하이라이트) 선
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.03 + ratio * 0.045})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // 8. 수면 위 반짝이는 윤슬 (Sun / Moon Specular Glitters)
+            const lightSourceX = atm.sunAlpha >= atm.moonAlpha ? sunX : moonX;
+            const lightStrength = Math.max(atm.sunAlpha, atm.moonAlpha);
+            if (lightStrength > 0.08) {
+                glitters.forEach(g => {
+                    const gy = horizonY + 8 + g.yRatio * (height - horizonY - 14);
+                    const spread = 24 + g.yRatio * 140;
+                    const gx = lightSourceX + g.offsetX * spread + Math.sin(t * 1.2 + g.phase) * 14;
+                    const shimmer = Math.max(0, Math.sin(t * g.speed + g.phase));
+                    const w = g.size * (0.4 + g.yRatio * 1.4) * shimmer;
+
+                    if (w > 0.5) {
+                        ctx.fillStyle = rgbStr(atm.glitter, shimmer * 0.55 * lightStrength);
+                        ctx.beginPath();
+                        ctx.roundRect(gx - w / 2, gy, w, 1.8 + g.yRatio * 1.4, 2);
+                        ctx.fill();
+                    }
+                });
+            }
+
+            // 9. 수면 터치 물결 파문 (Ripples)
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                const rp = ripples[i];
+                rp.r += 1.05;
+                rp.alpha -= 0.011;
+                if (rp.alpha <= 0) {
+                    ripples.splice(i, 1);
+                    continue;
+                }
+                ctx.save();
+                ctx.strokeStyle = `rgba(255, 255, 255, ${rp.alpha * 0.7})`;
+                ctx.lineWidth = 1.4;
+                ctx.beginPath();
+                ctx.ellipse(rp.x, rp.y, rp.r, rp.r * 0.32, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 떠다니는 유리병 & 등불 애니메이션 위치 갱신
+            animateFloatingVessels(t);
+
+            requestAnimationFrame(renderOceanFrame);
+        }
+
+        // =========================================================
+        // 4. Firebase 실시간 Firestore 연동 (예시 글 0개 - 깨끗한 초기 상태)
+        // =========================================================
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let vessels = []; // 초기 상태 완전 비어 있음 (예시 데이터 없음)
+        let activeVesselId = null;
+        let composeVesselType = 'bottle'; // 'bottle' | 'lantern'
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'starlight-ocean-live';
+
+        async function initRealtimeStorage() {
+            try {
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                    throw new Error('Firebase config missing');
+                }
+                const config = JSON.parse(__firebase_config);
+                const app = initializeApp(config);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (!user) return;
+                    currentUser = user;
+                    listenToOceanVessels();
+                });
+            } catch (e) {
+                // 로컬 테스트 환경일 경우 빈 상태로 시작하여 작성 즉시 화면에 표시
+                vessels = [];
+                syncVesselsDOM();
+            }
+        }
+
+        function listenToOceanVessels() {
+            if (!db || !currentUser) return;
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'ocean_vessels');
+
+            onSnapshot(colRef, (snapshot) => {
+                const list = [];
+                snapshot.forEach(docSnap => {
+                    list.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                vessels = list.slice(0, 30);
+                syncVesselsDOM();
+
+                if (activeVesselId) {
+                    refreshDetailModal();
+                }
+            }, (err) => {
+                console.error('Snapshot error:', err);
+            });
+        }
+
+        // 사실적인 유리병(코르크 마개 + 양피지 편지) & 소원 등불 SVG 생성기
+        function createVesselGraphicSVG(type) {
+            if (type === 'lantern') {
+                return `
+                <svg width="42" height="52" viewBox="0 0 42 52" class="overflow-visible">
+                    <defs>
+                        <radialGradient id="lanternGlow" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#fef08a" stop-opacity="0.95"/>
+                            <stop offset="60%" stop-color="#f97316" stop-opacity="0.75"/>
+                            <stop offset="100%" stop-color="#ea580c" stop-opacity="0"/>
+                        </radialGradient>
+                    </defs>
+                    <circle cx="21" cy="24" r="22" fill="url(#lanternGlow)" class="animate-pulse"/>
+                    <path d="M12 12 Q21 8 30 12 L28 34 Q21 37 14 34 Z" fill="rgba(254, 215, 170, 0.9)" stroke="#fb923c" stroke-width="1.2"/>
+                    <ellipse cx="21" cy="12" rx="9" ry="2.5" fill="#7c2d12"/>
+                    <ellipse cx="21" cy="34" rx="7" ry="2" fill="#7c2d12"/>
+                    <circle cx="21" cy="24" r="4.5" fill="#fffbeb"/>
+                    <!-- 수면 반사 빛 -->
+                    <ellipse cx="21" cy="43" rx="14" ry="3.5" fill="rgba(253, 186, 116, 0.35)"/>
+                </svg>`;
+            }
+            return `
+            <svg width="42" height="52" viewBox="0 0 42 52" class="overflow-visible">
+                <!-- 수면 물결 링 -->
+                <ellipse cx="21" cy="40" rx="16" ry="4.5" fill="none" stroke="rgba(186, 230, 253, 0.45)" stroke-width="1.2"/>
+                <g transform="rotate(-16 21 26)">
+                    <!-- 유리병 본체 -->
+                    <path d="M17 10 L25 10 L25 15 L29 20 L29 38 Q29 41 26 41 L16 41 Q13 41 13 38 L13 20 L17 15 Z"
+                          fill="rgba(186, 230, 253, 0.32)" stroke="rgba(224, 242, 254, 0.85)" stroke-width="1.3"/>
+                    <!-- 코르크 마개 -->
+                    <rect x="18" y="6" width="6" height="4.5" rx="1" fill="#d97706"/>
+                    <!-- 병 속 돌돌 말린 편지지 -->
+                    <rect x="17.5" y="22" width="7" height="14" rx="1.5" fill="#fef3c7" transform="rotate(10 21 29)"/>
+                    <line x1="17.5" y1="29" x2="24.5" y2="29" stroke="#dc2626" stroke-width="1.2"/>
+                    <!-- 유리 반사광 -->
+                    <line x1="15.5" y1="21" x2="15.5" y2="36" stroke="rgba(255,255,255,0.7)" stroke-width="1.2" stroke-linecap="round"/>
+                </g>
+            </svg>`;
+        }
+
+        const vesselsContainer = document.getElementById('vesselsContainer');
+        const emptyOceanHint = document.getElementById('emptyOceanHint');
+        const vesselDomMap = new Map();
+
+        function syncVesselsDOM() {
+            // 바다가 비어있으면 안내 문구 표시, 글이 하나라도 있으면 숨김
+            if (vessels.length === 0) {
+                emptyOceanHint.classList.remove('hidden');
+            } else {
+                emptyOceanHint.classList.add('hidden');
+            }
+
+            const validIds = new Set(vessels.map(v => v.id));
+            for (const [id, el] of vesselDomMap.entries()) {
+                if (!validIds.has(id)) {
+                    el.remove();
+                    vesselDomMap.delete(id);
+                }
+            }
+
+            vessels.forEach(item => {
+                let el = vesselDomMap.get(item.id);
+                if (!el) {
+                    el = document.createElement('button');
+                    el.type = 'button';
+                    el.className = 'vessel-node pointer-events-auto absolute flex flex-col items-center cursor-pointer focus:outline-none';
+                    el.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openDetailModal(item.id);
+                    });
+                    vesselsContainer.appendChild(el);
+                    vesselDomMap.set(item.id, el);
+                }
+
+                const replyCount = Array.isArray(item.replies) ? item.replies.length : 0;
+                const snippet = item.content.length > 15 ? item.content.slice(0, 15) + '…' : item.content;
+
+                el.innerHTML = `
+                    <div class="cinematic-glass px-2.5 py-1 rounded-full mb-1 flex items-center gap-1.5 text-[11px] text-white/95 whitespace-nowrap border border-white/20">
+                        <span class="font-semibold text-sky-200">${escapeHtml(item.author || '익명')}</span>
+                        <span class="text-slate-300 hidden sm:inline">· ${escapeHtml(snippet)}</span>
+                        ${replyCount > 0 ? `<span class="px-1.5 py-0.2 rounded-full bg-amber-300/25 text-amber-200 text-[10px] font-bold">💬 ${replyCount}</span>` : ''}
+                    </div>
+                    <div>${createVesselGraphicSVG(item.vesselType)}</div>
+                `;
+            });
+        }
+
+        function animateFloatingVessels(t) {
+            vessels.forEach((item, idx) => {
+                const el = vesselDomMap.get(item.id);
+                if (!el) return;
+                const baseX = (item.xRatio || 0.5) * width;
+                const baseY = (item.yRatio || 0.7) * height;
+
+                const driftX = Math.sin(t * 0.55 + idx * 1.9) * 16;
+                const bobY = Math.cos(t * 1.25 + idx * 2.3) * 6;
+                const tilt = Math.sin(t * 0.95 + idx) * 4.5;
+
+                const clampedX = Math.max(70, Math.min(width - 70, baseX + driftX));
+                const clampedY = Math.max(height * 0.59, Math.min(height - 110, baseY + bobY));
+
+                el.style.left = `${clampedX}px`;
+                el.style.top = `${clampedY}px`;
+                el.style.transform = `translate(-50%, -50%) rotate(${tilt}deg)`;
+            });
+        }
+
+        // =========================================================
+        // 5. 메시지 띄우기 & 실시간 댓글(답글) 상호작용
+        // =========================================================
+        const NICK_KEY = 'starlight_ocean_nick_v2';
+        const authorInput = document.getElementById('authorInput');
+        authorInput.value = localStorage.getItem(NICK_KEY) || '';
+
+        document.getElementById('vesselTypeBtn').addEventListener('click', () => {
+            composeVesselType = composeVesselType === 'bottle' ? 'lantern' : 'bottle';
+            document.getElementById('vesselTypeEmoji').textContent = composeVesselType === 'bottle' ? '🍾' : '🏮';
+            document.getElementById('vesselTypeName').textContent = composeVesselType === 'bottle' ? '유리병' : '소원등불';
+        });
+
+        document.getElementById('composeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const contentInput = document.getElementById('contentInput');
+            const text = contentInput.value.trim();
+            if (!text) {
+                showToast('바다에 띄울 마음을 적어주세요 🌊');
+                return;
+            }
+
+            const author = authorInput.value.trim() || '밤바다 여행자';
+            localStorage.setItem(NICK_KEY, author);
+
+            const xRatio = 0.16 + Math.random() * 0.68;
+            const yRatio = 0.62 + Math.random() * 0.22;
+
+            const payload = {
+                author,
+                content: text,
+                vesselType: composeVesselType,
+                xRatio,
+                yRatio,
+                likes: 0,
+                replies: [],
+                authorUid: currentUser ? currentUser.uid : 'local',
+                createdAt: Date.now()
+            };
+
+            contentInput.value = '';
+            triggerWaterRipple(xRatio * width, yRatio * height);
+
+            if (db && currentUser) {
+                try {
+                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'ocean_vessels');
+                    await addDoc(colRef, payload);
+                    showToast(composeVesselType === 'bottle' ? '유리병 편지를 바다에 띄웠습니다 🍾' : '소원 등불을 바다에 띄웠습니다 🏮');
+                } catch (err) {
+                    console.error(err);
+                    showToast('잠시 후 다시 시도해 주세요.');
+                }
+            } else {
+                payload.id = 'local-' + Date.now();
+                vessels.unshift(payload);
+                syncVesselsDOM();
+                showToast('바다에 마음을 띄웠습니다 ✨');
+            }
+        });
+
+        function openDetailModal(id) {
+            activeVesselId = id;
+            refreshDetailModal();
+            const modal = document.getElementById('detailModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function refreshDetailModal() {
+            const item = vessels.find(v => v.id === activeVesselId);
+            if (!item) {
+                closeDetailModal();
+                return;
+            }
+            document.getElementById('modalEmoji').textContent = item.vesselType === 'lantern' ? '🏮' : '🍾';
+            document.getElementById('modalAuthor').textContent = item.author || '익명';
+            document.getElementById('modalTime').textContent = formatTimeAgo(item.createdAt);
+            document.getElementById('modalBody').textContent = item.content;
+            document.getElementById('modalLikes').textContent = item.likes || 0;
+
+            const delBtn = document.getElementById('deleteVesselBtn');
+            if (currentUser && item.authorUid === currentUser.uid) {
+                delBtn.classList.remove('hidden');
+            } else if (!currentUser && item.authorUid === 'local') {
+                delBtn.classList.remove('hidden');
+            } else {
+                delBtn.classList.add('hidden');
+            }
+
+            const repliesEl = document.getElementById('repliesContainer');
+            const replies = Array.isArray(item.replies) ? item.replies : [];
+            repliesEl.innerHTML = '';
+
+            if (replies.length === 0) {
+                repliesEl.innerHTML = `<div class="text-center py-6 text-xs text-slate-400 font-serif-kr">아직 답글이 없습니다. 첫 번째 온기를 남겨보세요 🕯️</div>`;
+            } else {
+                replies.forEach(rep => {
+                    const row = document.createElement('div');
+                    row.className = 'p-3 rounded-2xl bg-white/5 border border-white/10 text-xs sm:text-sm';
+                    row.innerHTML = `
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-semibold text-amber-200">${escapeHtml(rep.author || '친구')}</span>
+                            <span class="text-[10px] text-slate-400">${formatTimeAgo(rep.createdAt)}</span>
+                        </div>
+                        <p class="text-slate-200 leading-relaxed break-words select-text">${escapeHtml(rep.text)}</p>
+                    `;
+                    repliesEl.appendChild(row);
+                });
+                repliesEl.scrollTop = repliesEl.scrollHeight;
+            }
+        }
+
+        function closeDetailModal() {
+            activeVesselId = null;
+            const modal = document.getElementById('detailModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        document.getElementById('closeModalBtn').addEventListener('click', closeDetailModal);
+        document.getElementById('detailModal').addEventListener('click', (e) => {
+            if (e.target.id === 'detailModal') closeDetailModal();
+        });
+
+        document.getElementById('heartBtn').addEventListener('click', async () => {
+            if (!activeVesselId) return;
+            const item = vessels.find(v => v.id === activeVesselId);
+            if (!item) return;
+
+            oceanAudio.playHarmonic(0.75);
+            if (db && currentUser) {
+                try {
+                    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'ocean_vessels', item.id);
+                    await updateDoc(ref, { likes: increment(1) });
+                } catch (e) {}
+            } else {
+                item.likes = (item.likes || 0) + 1;
+                refreshDetailModal();
+            }
+        });
+
+        document.getElementById('replyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!activeVesselId) return;
+            const replyInput = document.getElementById('replyInput');
+            const text = replyInput.value.trim();
+            if (!text) return;
+
+            const item = vessels.find(v => v.id === activeVesselId);
+            if (!item) return;
+
+            const author = authorInput.value.trim() || '밤바다 친구';
+            localStorage.setItem(NICK_KEY, author);
+
+            const replyObj = { author, text, createdAt: Date.now() };
+            replyInput.value = '';
+            oceanAudio.playHarmonic(0.88);
+
+            if (db && currentUser) {
+                try {
+                    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'ocean_vessels', item.id);
+                    await updateDoc(ref, { replies: arrayUnion(replyObj) });
+                } catch (e) {}
+            } else {
+                if (!Array.isArray(item.replies)) item.replies = [];
+                item.replies.push(replyObj);
+                refreshDetailModal();
+                syncVesselsDOM();
+            }
+        });
+
+        document.getElementById('deleteVesselBtn').addEventListener('click', async () => {
+            if (!activeVesselId) return;
+            const targetId = activeVesselId;
+            closeDetailModal();
+
+            if (db && currentUser) {
+                try {
+                    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'ocean_vessels', targetId);
+                    await deleteDoc(ref);
+                    showToast('띄워 보낸 편지를 조용히 거두었습니다.');
+                } catch (e) {}
+            } else {
+                vessels = vessels.filter(v => v.id !== targetId);
+                syncVesselsDOM();
+                showToast('편지를 거두었습니다.');
+            }
+        });
+
+        // =========================================================
+        // 6. 파도 소리 & 물멍(Zen) 모드 UI 토글
+        // =========================================================
+        document.getElementById('soundToggleBtn').addEventListener('click', () => {
+            const on = oceanAudio.toggle();
+            document.getElementById('soundIcon').textContent = on ? '🔊' : '🔇';
+            document.getElementById('soundText').textContent = on ? '파도 소리 끄기' : '파도 소리';
+            showToast(on ? '잔잔한 파도 소리가 들려옵니다 🌊' : '파도 소리를 껐습니다.');
+        });
+
+        const topHud = document.getElementById('topHud');
+        const bottomHud = document.getElementById('bottomHud');
+        const exitZenBtn = document.getElementById('exitZenBtn');
+
+        document.getElementById('enterZenBtn').addEventListener('click', () => {
+            topHud.classList.add('zen-hidden');
+            bottomHud.classList.add('zen-hidden');
+            emptyOceanHint.classList.add('zen-hidden');
+            exitZenBtn.classList.remove('hidden');
+            showToast('물멍 모드입니다. 오직 바다와 시간의 흐름만 느껴보세요 ✨');
+        });
+
+        exitZenBtn.addEventListener('click', () => {
+            topHud.classList.remove('zen-hidden');
+            bottomHud.classList.remove('zen-hidden');
+            emptyOceanHint.classList.remove('zen-hidden');
+            exitZenBtn.classList.add('hidden');
+        });
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function formatTimeAgo(ts) {
+            if (!ts) return '방금 전';
+            const sec = Math.floor((Date.now() - ts) / 1000);
+            if (sec < 60) return '방금 전';
+            if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
+            if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`;
+            return `${Math.floor(sec / 86400)}일 전`;
+        }
+
+        let toastTimer = null;
+        function showToast(msg) {
+            const el = document.getElementById('toastEl');
+            document.getElementById('toastText').textContent = msg;
+            el.classList.remove('opacity-0', '-translate-y-2');
+            el.classList.add('opacity-100', 'translate-y-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                el.classList.remove('opacity-100', 'translate-y-0');
+                el.classList.add('opacity-0', '-translate-y-2');
+            }, 2400);
+        }
+
+        window.addEventListener('load', () => {
+            initRealtimeStorage();
+            requestAnimationFrame(renderOceanFrame);
+        });
+    </script>
+</body>
+</html>
